@@ -122,10 +122,10 @@ Il ne s'agit pas d'une base transactionnelle (OLTP) mais bien d'un stockage orie
 | Livrable | Emplacement |
 |---|---|
 | Structure SQL des tables | `init.sql` (tables `ingestion_runs` et `pokemon`) |
-| Description du workflow n8n | Ce README, Partie C + fichier `n8n-workflow.json` |
-| Preuve de chargement dans PostgreSQL | 150 Pokémon insérés, vérifiable via `queries.sql` |
+| Description du workflow n8n | Ce README, Partie C + fichier `tp2-warehouse/n8n-workflow.json` |
+| Preuve de chargement dans PostgreSQL | 150 Pokémon insérés, vérifiable via `tp2-warehouse/queries.sql` (captures : `preuves/Warehouse_Preuve_chargement_postgres.png`, `preuves/Warehouse_Preuve_resultat_postgres.png`) |
 | Repo GitHub | Ce dépôt |
-| 5 requêtes SQL de contrôle | `queries.sql` |
+| 5 requêtes SQL de contrôle | `tp2-warehouse/queries.sql` |
 | Réponse rédigée (justification DW) | Ce README, Partie F |
 
 ---
@@ -218,9 +218,9 @@ L'ajout de MinIO transforme l'architecture en une logique **Data Lake / Lakehous
 | Ajout de MinIO dans Docker | `docker-compose.yml` (services `minio` + `minio-init`) |
 | Création des buckets | Automatique via `minio-init` (raw-pokemon, pokemon-images, reports) |
 | Structure SQL ajoutée | `init.sql` (tables `pokemon_files` et `file_ingestion_log`) |
-| Description du workflow n8n | Ce README, Partie C Data Lake + fichier `n8n-workflow-datalake.json` |
-| Exemple d'objet stocké dans MinIO | Fichiers JSON bruts dans `raw-pokemon/raw/` (ex: `1_bulbasaur.json`) |
-| Métadonnées en base | Tables `pokemon_files` et `file_ingestion_log` (capture : `datalake_preuve_metadonnees_base`) |
+| Description du workflow n8n | Ce README, Partie C Data Lake + fichier `tp2-datalake/n8n-workflow-datalake.json` |
+| Exemple d'objet stocké dans MinIO | Fichiers JSON bruts dans `raw-pokemon/raw/` (ex: `preuves/1_bulbasaur.json`) |
+| Métadonnées en base | Tables `pokemon_files` et `file_ingestion_log` (capture : `preuves/Datalake_Preuve_Metadonnees_base.png`) |
 | Réponse rédigée (justification Data Lake) | Ce README, Partie D |
 
 ---
@@ -368,10 +368,10 @@ La couche analytique intermédiaire (vues SQL) est essentielle car elle découpl
 
 | Livrable | Emplacement |
 |---|---|
-| Vues SQL analytiques | `analytics.sql` (5 vues) |
+| Vues SQL analytiques | `tp3-analytics/analytics.sql` (5 vues) |
 | KPI retenus et justification | Ce README, Partie B TP3 |
-| Restitution visuelle | Metabase (`http://localhost:3000`) (`Telegram_Metabase.png`)|
-| Workflow n8n Telegram | `n8n-workflow-telegram.json` (`Telegram_n8n.png`) |
+| Restitution visuelle | Metabase (`http://localhost:3000`) (capture : `preuves/Telegram_Metabase.png`) |
+| Workflow n8n Telegram | `tp3-analytics/n8n-workflow-telegram.json` (capture : `preuves/Telegram_n8n.png`) |
 | Commandes Telegram | `/stats`, `/types`, `/incomplete`, `/help` |
-| Exemples de réponses bot | Ce README, Partie E TP3 (`Telegram_result_preuve.png`)|
+| Exemples de réponses bot | Ce README, Partie E TP3 (capture : `preuves/Telegram_result_preuve.png`) |
 | Réponse rédigée | Ce README, Partie H TP3 |
