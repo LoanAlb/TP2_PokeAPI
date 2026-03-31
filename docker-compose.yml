@@ -53,6 +53,19 @@ services:
       - postgres
       - minio
 
+  metabase:
+    image: metabase/metabase:latest
+    container_name: tp2_metabase
+    ports:
+      - "3000:3000"
+    volumes:
+      - metabasedata:/metabase-data
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+    depends_on:
+      - postgres
+
 volumes:
   pgdata:
   miniodata:
+  metabasedata:

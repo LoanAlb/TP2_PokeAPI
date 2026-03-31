@@ -12,7 +12,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT pokemon_id, pokemon_name FROM pokemon ORDER BY pokemon_id LIMIT 10;"
+        "query": "SELECT pokemon_id, pokemon_name FROM pokemon ORDER BY pokemon_id LIMIT 50;"
       },
       "id": "get_pokemon_list",
       "name": "Get Pokemon List",
@@ -68,7 +68,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prepared = $('Prepare Files').all();\nconst results = [];\n\nfor (const item of prepared) {\n  const p = item.json;\n\n  const insertFile = `INSERT INTO pokemon_files (pokemon_id, bucket_name, object_key, file_name, file_type, file_size, mime_type, created_at) VALUES (${p.pokemon_id}, '${p.bucket_name}', '${p.object_key}', '${p.file_name}', '${p.file_type}', ${p.file_size}, '${p.mime_type}', '${p.created_at}');`;\n\n  const insertLog = `INSERT INTO file_ingestion_log (file_name, bucket_name, object_key, source, status, file_size, mime_type, processed_at) VALUES ('${p.file_name}', '${p.bucket_name}', '${p.object_key}', 'pokeapi', 'success', ${p.file_size}, '${p.mime_type}', '${p.created_at}');`;\n\n  results.push({ json: { query: insertFile } });\n  results.push({ json: { query: insertLog } });\n}\n\nreturn results;"
+        "jsCode": "const prepared = $('Prepare Files').all();\nconst results = [];\n\nfor (const item of prepared) {\n  const p = item.json;\n\n  const insertFile = `INSERT INTO pokemon_files (pokemon_id, bucket_name, object_key, file_name, file_type, file_size, mime_type, created_at) VALUES (${p.pokemon_id}, '${p.bucket_name}', '${p.object_key}', '${p.file_name}', '${p.file_type}', ${p.file_size}, '${p.mime_type}', '${p.created_at}') ON CONFLICT (pokemon_id, object_key) DO UPDATE SET file_size=EXCLUDED.file_size, mime_type=EXCLUDED.mime_type, created_at=EXCLUDED.created_at;`;\n\n  const insertLog = `INSERT INTO file_ingestion_log (file_name, bucket_name, object_key, source, status, file_size, mime_type, processed_at) VALUES ('${p.file_name}', '${p.bucket_name}', '${p.object_key}', 'pokeapi', 'success', ${p.file_size}, '${p.mime_type}', '${p.created_at}');`;\n\n  results.push({ json: { query: insertFile } });\n  results.push({ json: { query: insertLog } });\n}\n\nreturn results;"
       },
       "id": "build_sql",
       "name": "Build SQL",

@@ -1,0 +1,280 @@
+{
+  "name": "Telegram Bot - Pokemon Analytics",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "seconds", "secondsInterval": 10 }]
+        }
+      },
+      "id": "schedule",
+      "name": "Every 10s",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst offset = staticData.offset || 0;\nreturn [{ json: { offset } }];"
+      },
+      "id": "read_offset",
+      "name": "Read Offset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot8357852006:AAFCXsNMkQrUUZBcghghmcp_4-XmEmBdmIg/getUpdates?offset={{ $json.offset }}&timeout=0",
+        "options": {}
+      },
+      "id": "get_updates",
+      "name": "Get Updates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst data = $input.first().json;\n\nif (!data.ok || !data.result || data.result.length === 0) {\n  return [];\n}\n\nconst updates = data.result;\nconst lastId = updates[updates.length - 1].update_id;\nstaticData.offset = lastId + 1;\n\nconst last = updates[updates.length - 1];\nif (!last.message || !last.message.text) return [];\n\nconst cmd = last.message.text.trim().toLowerCase().split(' ')[0];\nlet route = 'help';\nif (cmd === '/stats') route = 'stats';\nelse if (cmd === '/types') route = 'types';\nelse if (cmd === '/incomplete') route = 'incomplete';\n\nreturn [{ json: { chatId: last.message.chat.id, route } }];"
+      },
+      "id": "parse_updates",
+      "name": "Parse Updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $input.first().json.route;\nconst chatId = $input.first().json.chatId;\nif (route === 'stats') return [{ json: { chatId, route } }];\nreturn [];"
+      },
+      "id": "if_stats",
+      "name": "If Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $input.first().json.route;\nconst chatId = $input.first().json.chatId;\nif (route === 'types') return [{ json: { chatId, route } }];\nreturn [];"
+      },
+      "id": "if_types",
+      "name": "If Types",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $input.first().json.route;\nconst chatId = $input.first().json.chatId;\nif (route === 'incomplete') return [{ json: { chatId, route } }];\nreturn [];"
+      },
+      "id": "if_incomplete",
+      "name": "If Incomplete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const route = $input.first().json.route;\nconst chatId = $input.first().json.chatId;\nif (route === 'help') return [{ json: { chatId, route } }];\nreturn [];"
+      },
+      "id": "if_help",
+      "name": "If Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 700]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM v_kpi_global;"
+      },
+      "id": "query_stats",
+      "name": "Query Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1100, 100],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Pokemon DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst chatId = $('Parse Updates').first().json.chatId;\nconst total = d.total_pokemon;\nconst completes = d.fiches_completes;\nconst pct = total > 0 ? Math.round(completes * 100 / total) : 0;\nconst pctArt = total > 0 ? Math.round(d.with_artwork * 100 / total) : 0;\nconst pctSprite = total > 0 ? Math.round(d.with_sprite * 100 / total) : 0;\nconst storageMb = (d.total_storage_bytes / 1024 / 1024).toFixed(1);\n\nconst msg = '📊 KPI du Référentiel Pokémon\\n\\n' +\n  '🔢 Total Pokémon : ' + total + '\\n' +\n  '✅ Fiches complètes : ' + completes + ' (' + pct + '%)\\n' +\n  '🖼 Avec artwork : ' + d.with_artwork + ' (' + pctArt + '%)\\n' +\n  '👾 Avec sprite : ' + d.with_sprite + ' (' + pctSprite + '%)\\n' +\n  '📁 Pokémon avec fichier brut : ' + d.pokemon_with_files + '\\n' +\n  '💾 Fichiers stockés (MinIO) : ' + d.total_files_stored + '\\n' +\n  '📦 Stockage total : ' + storageMb + ' Mo';\n\nreturn [{ json: { chatId, text: msg } }];"
+      },
+      "id": "format_stats",
+      "name": "Format Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 100]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot8357852006:AAFCXsNMkQrUUZBcghghmcp_4-XmEmBdmIg/sendMessage?chat_id={{ $json.chatId }}&text={{ encodeURIComponent($json.text) }}",
+        "options": {}
+      },
+      "id": "send_stats",
+      "name": "Send Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM v_type_distribution;"
+      },
+      "id": "query_types",
+      "name": "Query Types",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1100, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Pokemon DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst chatId = $('Parse Updates').first().json.chatId;\nconst emojis = { water:'💧', fire:'🔥', grass:'🌿', electric:'⚡', poison:'☠️', normal:'⚪', ground:'🟤', fairy:'🧚', bug:'🐛', fighting:'🥊', psychic:'🔮', rock:'🪨', ghost:'👻', ice:'❄️', dragon:'🐉', dark:'🌑', steel:'⚙️', flying:'🕊️' };\n\nlet msg = '📋 Répartition par Type Principal\\n\\n';\nfor (const item of items) {\n  const t = item.json;\n  const emoji = emojis[t.main_type] || '▪️';\n  msg += emoji + ' ' + t.main_type + ' : ' + t.nb_pokemon + ' (' + t.pct + '%)\\n';\n}\n\nreturn [{ json: { chatId, text: msg } }];"
+      },
+      "id": "format_types",
+      "name": "Format Types",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot8357852006:AAFCXsNMkQrUUZBcghghmcp_4-XmEmBdmIg/sendMessage?chat_id={{ $json.chatId }}&text={{ encodeURIComponent($json.text) }}",
+        "options": {}
+      },
+      "id": "send_types",
+      "name": "Send Types",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM v_pokemon_incomplete LIMIT 10;"
+      },
+      "id": "query_incomplete",
+      "name": "Query Incomplete",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1100, 500],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Pokemon DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst chatId = $('Parse Updates').first().json.chatId;\n\nif (items.length === 0 || !items[0].json.pokemon_id) {\n  return [{ json: { chatId, text: '✅ Aucun Pokémon incomplet !\\n\\nToutes les fiches du référentiel sont complètes.' } }];\n}\n\nlet msg = '⚠️ Pokémon Incomplets (' + items.length + ' affichés)\\n\\n';\nfor (const item of items) {\n  const p = item.json;\n  msg += '• #' + p.pokemon_id + ' ' + p.pokemon_name + ' — manque : ' + p.champs_manquants.trim() + '\\n';\n}\n\nreturn [{ json: { chatId, text: msg } }];"
+      },
+      "id": "format_incomplete",
+      "name": "Format Incomplete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 500]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot8357852006:AAFCXsNMkQrUUZBcghghmcp_4-XmEmBdmIg/sendMessage?chat_id={{ $json.chatId }}&text={{ encodeURIComponent($json.text) }}",
+        "options": {}
+      },
+      "id": "send_incomplete",
+      "name": "Send Incomplete",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Parse Updates').first().json.chatId;\nconst msg = '🤖 Bot Pokémon Analytics — Aide\\n\\nCommandes disponibles :\\n\\n' +\n  '/stats — KPI globaux du référentiel\\n' +\n  '/types — Répartition par type principal\\n' +\n  '/incomplete — Pokémon avec données manquantes\\n' +\n  '/help — Afficher cette aide';\nreturn [{ json: { chatId, text: msg } }];"
+      },
+      "id": "format_help",
+      "name": "Format Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 700]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot8357852006:AAFCXsNMkQrUUZBcghghmcp_4-XmEmBdmIg/sendMessage?chat_id={{ $json.chatId }}&text={{ encodeURIComponent($json.text) }}",
+        "options": {}
+      },
+      "id": "send_help",
+      "name": "Send Help",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 700]
+    }
+  ],
+  "connections": {
+    "Every 10s": {
+      "main": [[{ "node": "Read Offset", "type": "main", "index": 0 }]]
+    },
+    "Read Offset": {
+      "main": [[{ "node": "Get Updates", "type": "main", "index": 0 }]]
+    },
+    "Get Updates": {
+      "main": [[{ "node": "Parse Updates", "type": "main", "index": 0 }]]
+    },
+    "Parse Updates": {
+      "main": [
+        [
+          { "node": "If Stats", "type": "main", "index": 0 },
+          { "node": "If Types", "type": "main", "index": 0 },
+          { "node": "If Incomplete", "type": "main", "index": 0 },
+          { "node": "If Help", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "If Stats": {
+      "main": [[{ "node": "Query Stats", "type": "main", "index": 0 }]]
+    },
+    "Query Stats": {
+      "main": [[{ "node": "Format Stats", "type": "main", "index": 0 }]]
+    },
+    "Format Stats": {
+      "main": [[{ "node": "Send Stats", "type": "main", "index": 0 }]]
+    },
+    "If Types": {
+      "main": [[{ "node": "Query Types", "type": "main", "index": 0 }]]
+    },
+    "Query Types": {
+      "main": [[{ "node": "Format Types", "type": "main", "index": 0 }]]
+    },
+    "Format Types": {
+      "main": [[{ "node": "Send Types", "type": "main", "index": 0 }]]
+    },
+    "If Incomplete": {
+      "main": [[{ "node": "Query Incomplete", "type": "main", "index": 0 }]]
+    },
+    "Query Incomplete": {
+      "main": [[{ "node": "Format Incomplete", "type": "main", "index": 0 }]]
+    },
+    "Format Incomplete": {
+      "main": [[{ "node": "Send Incomplete", "type": "main", "index": 0 }]]
+    },
+    "If Help": {
+      "main": [[{ "node": "Format Help", "type": "main", "index": 0 }]]
+    },
+    "Format Help": {
+      "main": [[{ "node": "Send Help", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

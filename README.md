@@ -222,3 +222,156 @@ L'ajout de MinIO transforme l'architecture en une logique **Data Lake / Lakehous
 | Exemple d'objet stocké dans MinIO | Fichiers JSON bruts dans `raw-pokemon/raw/` (ex: `1_bulbasaur.json`) |
 | Métadonnées en base | Tables `pokemon_files` et `file_ingestion_log` (capture : `datalake_preuve_metadonnees_base`) |
 | Réponse rédigée (justification Data Lake) | Ce README, Partie D |
+
+---
+
+# TP3 — Restitution analytique et automatisation Telegram
+
+## Partie A — Couche analytique
+
+Cinq vues SQL ont été créées dans `analytics.sql` :
+
+| Vue | Description |
+|---|---|
+| `v_pokemon_quality` | Qualité par Pokémon : complétude de chaque fiche (complet/incomplet), présence d'images et de fichiers associés |
+| `v_type_distribution` | Répartition par type principal avec pourcentage |
+| `v_files_summary` | Synthèse des fichiers stockés dans MinIO (nombre, taille totale, taille moyenne) |
+| `v_kpi_global` | KPI globaux du référentiel en une seule ligne |
+| `v_pokemon_incomplete` | Liste des Pokémon incomplets avec détail des champs manquants |
+
+---
+
+## Partie B — KPI retenus
+
+| KPI | Description | Justification |
+|---|---|---|
+| Total Pokémon | Nombre total de Pokémon en base | Volume de référence du catalogue |
+| Taux de fiches complètes | % de Pokémon ayant toutes les données renseignées | Indicateur principal de qualité du référentiel |
+| Taux d'artwork officiel | % de Pokémon avec image officielle | Mesure la richesse visuelle du catalogue |
+| Taux de sprite frontal | % de Pokémon avec sprite | Complétude des assets graphiques |
+| Pokémon avec fichier brut | Nombre de Pokémon dont le JSON brut est stocké dans MinIO | Couverture du Data Lake |
+| Total fichiers stockés | Nombre de fichiers dans MinIO | Volume du stockage objet |
+| Stockage total (Mo) | Taille cumulée des fichiers dans MinIO | Suivi de la consommation de stockage |
+| Répartition par type | Nombre et % par type principal | Équilibre du catalogue |
+
+---
+
+## Partie C — Restitution visuelle (Metabase)
+
+Metabase est ajouté au `docker-compose.yml` et accessible sur `http://localhost:3000`.
+
+Le dashboard contient :
+- Les KPI globaux (total, taux de complétude, taux d'artwork, taux de sprite)
+- Un graphique en barres de la répartition par type principal
+- Un tableau des Pokémon incomplets
+- Un résumé du stockage MinIO
+
+### Configuration Metabase
+
+1. Ouvrir `http://localhost:3000`
+2. Créer un compte admin
+3. Ajouter la base PostgreSQL :
+   - Host: `postgres`
+   - Port: `5432`
+   - Database: `pokemon_db`
+   - User: `pokemon`
+   - Password: `pokemon`
+4. Créer les questions à partir des vues `v_kpi_global`, `v_type_distribution`, `v_pokemon_incomplete`, `v_files_summary`
+5. Assembler dans un dashboard
+
+---
+
+## Partie D — Automatisation Telegram
+
+### Création du bot
+
+1. Ouvrir Telegram et chercher **@BotFather**
+2. Envoyer `/newbot`
+3. Choisir un nom et un username
+4. Récupérer le **token** fourni par BotFather
+
+---
+
+## Partie E — Commandes du bot
+
+| Commande | Description |
+|---|---|
+| `/stats` | Affiche les KPI globaux du référentiel (total, complétude, artwork, sprite, stockage) |
+| `/types` | Affiche la répartition par type principal avec emojis et pourcentages |
+| `/incomplete` | Liste les Pokémon incomplets avec le détail des champs manquants |
+| `/help` | Affiche la liste des commandes disponibles |
+
+### Exemples de réponses
+
+**`/stats`** :
+```
+📊 KPI du Référentiel Pokémon
+
+🔢 Total Pokémon : 150
+✅ Fiches complètes : 150 (100%)
+🖼 Avec artwork : 150 (100%)
+👾 Avec sprite : 150 (100%)
+📁 Pokémon avec fichier brut : 5
+💾 Fichiers stockés (MinIO) : 5
+📦 Stockage total : 1.3 Mo
+```
+
+**`/types`** :
+```
+📋 Répartition par Type Principal
+
+💧 water : 28 (18.7%)
+⚪ normal : 22 (14.7%)
+☠️ poison : 14 (9.3%)
+🌿 grass : 12 (8.0%)
+🔥 fire : 12 (8.0%)
+...
+```
+
+**`/incomplete`** :
+```
+✅ Aucun Pokémon incomplet !
+Toutes les fiches du référentiel sont complètes.
+```
+
+---
+
+## Partie F — Workflow n8n Telegram
+
+Le workflow `n8n-workflow-telegram.json` est composé de **13 nœuds** :
+
+1. **Telegram Trigger** — Reçoit les messages envoyés au bot
+2. **Route Command** (Code) — Identifie la commande (`/stats`, `/types`, `/incomplete`, `/help`)
+3. **Switch** — Aiguille vers la branche correspondante
+4. **Query Stats / Query Types / Query Incomplete** (Postgres) — Interroge les vues analytiques
+5. **Format Stats / Format Types / Format Incomplete / Format Help** (Code) — Met en forme la réponse avec emojis et structure lisible
+6. **Send Stats / Send Types / Send Incomplete / Send Help** (Telegram) — Envoie la réponse dans Telegram
+
+### Import
+
+1. Créer un nouveau workflow dans n8n
+2. Importer `n8n-workflow-telegram.json`
+3. Créer un credential **Telegram API** avec le token du bot
+4. Associer ce credential au **Telegram Trigger** et aux 4 nœuds **Send**
+5. Associer le credential PostgreSQL aux 3 nœuds **Query**
+6. **Activer** le workflow (bouton toggle en haut à droite)
+
+---
+
+## Partie H — Réponse rédigée
+
+La couche analytique intermédiaire (vues SQL) est essentielle car elle découple les tables techniques d'ingestion de la logique métier : les vues pré-calculent les indicateurs de qualité, les taux et les répartitions, ce qui évite de réécrire des requêtes complexes dans chaque outil de restitution. Les KPI ont été choisis pour couvrir les trois dimensions de qualité du référentiel : la complétude des données (fiches complètes, champs manquants), la richesse des assets (artwork, sprites), et la couverture du Data Lake (fichiers stockés, volumétrie). La restitution Metabase permet à un utilisateur non technique de comprendre en un coup d'œil l'état du catalogue grâce à des indicateurs chiffrés et des graphiques de répartition. Telegram constitue un point d'entrée complémentaire car il rend les KPI accessibles sans ouvrir un dashboard : un simple message suffit pour obtenir une synthèse à jour, ce qui est adapté à un usage mobile ou à une vérification rapide. La différence fondamentale entre une requête SQL et une automatisation Telegram est que la première nécessite un accès technique à la base, tandis que la seconde expose les données à n'importe quel utilisateur via une interface conversationnelle, avec une mise en forme lisible et une logique de routage par commande.
+
+---
+
+## Livrables — TP3
+
+| Livrable | Emplacement |
+|---|---|
+| Vues SQL analytiques | `analytics.sql` (5 vues) |
+| KPI retenus et justification | Ce README, Partie B TP3 |
+| Restitution visuelle | Metabase (`http://localhost:3000`) (`Telegram_Metabase.png`)|
+| Workflow n8n Telegram | `n8n-workflow-telegram.json` (`Telegram_n8n.png`) |
+| Commandes Telegram | `/stats`, `/types`, `/incomplete`, `/help` |
+| Exemples de réponses bot | Ce README, Partie E TP3 (`Telegram_result_preuve.png`)|
+| Réponse rédigée | Ce README, Partie H TP3 |

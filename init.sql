@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS pokemon (
     source_last_updated_at  TIMESTAMP,
     ingested_at             TIMESTAMP NOT NULL DEFAULT NOW(),
     run_id                  INT REFERENCES ingestion_runs(run_id),
-    PRIMARY KEY (pokemon_id, run_id)
+    PRIMARY KEY (pokemon_id)
 );
 
 -- ============================================
