@@ -1,0 +1,133 @@
+{
+  "name": "PokeAPI to PostgreSQL Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ingestion_runs (source, started_at, status) VALUES ('pokeapi', NOW(), 'running') RETURNING run_id;"
+      },
+      "id": "create_run",
+      "name": "Create Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [220, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Pokemon DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://pokeapi.co/api/v2/pokemon?limit=150&offset=0",
+        "options": {}
+      },
+      "id": "fetch_list",
+      "name": "Fetch Pokemon List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = items[0].json.results;\nreturn results.map(p => ({ json: { url: p.url, name: p.name } }));"
+      },
+      "id": "split_urls",
+      "name": "Split URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "id": "fetch_detail",
+      "name": "Fetch Pokemon Detail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 300],
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const runId = $('Create Run').first().json.run_id;\nconst now = new Date().toISOString();\nconst items = $input.all();\n\nreturn items.map(item => {\n  const p = item.json;\n\n  const pokemon_name = (p.name || '').trim() || 'unknown';\n  const base_experience = p.base_experience != null ? p.base_experience : 'NULL';\n  const height = p.height != null ? p.height : 'NULL';\n  const weight = p.weight != null ? p.weight : 'NULL';\n\n  const main_type = (p.types && p.types.length > 0)\n    ? p.types[0].type.name\n    : 'unknown';\n\n  const has_official_artwork = !!(p.sprites\n    && p.sprites.other\n    && p.sprites.other['official-artwork']\n    && p.sprites.other['official-artwork'].front_default);\n\n  const has_front_sprite = !!(p.sprites && p.sprites.front_default);\n\n  const sql = `INSERT INTO pokemon (pokemon_id, pokemon_name, base_experience, height, weight, main_type, has_official_artwork, has_front_sprite, source_last_updated_at, ingested_at, run_id) VALUES (${p.id}, '${pokemon_name.replace(/'/g, \"''\")}', ${base_experience}, ${height}, ${weight}, '${main_type}', ${has_official_artwork}, ${has_front_sprite}, '${now}', '${now}', ${runId});`;\n\n  return { json: { query: sql } };\n});"
+      },
+      "id": "transform",
+      "name": "Transform Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}"
+      },
+      "id": "insert_pokemon",
+      "name": "Insert Pokemon",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1320, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Pokemon DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ingestion_runs SET finished_at = NOW(), status = 'success', records_received = 150, records_inserted = 150 WHERE run_id = (SELECT MAX(run_id) FROM ingestion_runs WHERE status = 'running');"
+      },
+      "id": "update_run",
+      "name": "Update Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1540, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Pokemon DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [[{ "node": "Create Run", "type": "main", "index": 0 }]]
+    },
+    "Create Run": {
+      "main": [[{ "node": "Fetch Pokemon List", "type": "main", "index": 0 }]]
+    },
+    "Fetch Pokemon List": {
+      "main": [[{ "node": "Split URLs", "type": "main", "index": 0 }]]
+    },
+    "Split URLs": {
+      "main": [[{ "node": "Fetch Pokemon Detail", "type": "main", "index": 0 }]]
+    },
+    "Fetch Pokemon Detail": {
+      "main": [[{ "node": "Transform Data", "type": "main", "index": 0 }]]
+    },
+    "Transform Data": {
+      "main": [[{ "node": "Insert Pokemon", "type": "main", "index": 0 }]]
+    },
+    "Insert Pokemon": {
+      "main": [[{ "node": "Update Run", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
