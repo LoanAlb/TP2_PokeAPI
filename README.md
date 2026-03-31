@@ -1,14 +1,17 @@
-# TP2 — Pipeline PokeAPI → n8n → PostgreSQL
+# TP2 — Pipeline PokeAPI → n8n → PostgreSQL + MinIO
 
 ## Architecture
 
 ```
 PokeAPI (REST) → n8n (ETL) → PostgreSQL (stockage structuré)
+                            → MinIO (stockage objet / Data Lake)
 ```
 
 Tout tourne en local via Docker Compose.
 
 ---
+
+# TP2 — Data Warehouse
 
 ## Partie A — Lancement de l'environnement
 
@@ -57,7 +60,7 @@ Le fichier `init.sql` est exécuté automatiquement au premier démarrage de Pos
 
 ## Partie C — Description du workflow n8n
 
-Le workflow est composé de **7 nœuds** exécutés séquentiellement :
+Le workflow est composé de **8 nœuds** exécutés séquentiellement :
 
 1. **Start** (Manual Trigger) — Déclenchement manuel du pipeline.
 2. **Create Run** (Postgres) — Insère une ligne dans `ingestion_runs` avec le statut `running` et récupère le `run_id`.
@@ -111,3 +114,111 @@ Cette architecture relève d'une logique **Data Warehouse** pour les raisons sui
 - **Données orientées analyse** : le schéma final est conçu pour être interrogé facilement (agrégations par type, comptages, filtres), ce qui correspond à l'objectif d'un entrepôt de données : fournir une couche de données fiable et exploitable pour l'analyse.
 
 Il ne s'agit pas d'une base transactionnelle (OLTP) mais bien d'un stockage orienté lecture et analyse (OLAP), alimenté par un pipeline ETL reproductible.
+
+---
+
+## Livrables — Data Warehouse
+
+| Livrable | Emplacement |
+|---|---|
+| Structure SQL des tables | `init.sql` (tables `ingestion_runs` et `pokemon`) |
+| Description du workflow n8n | Ce README, Partie C + fichier `n8n-workflow.json` |
+| Preuve de chargement dans PostgreSQL | 150 Pokémon insérés, vérifiable via `queries.sql` |
+| Repo GitHub | Ce dépôt |
+| 5 requêtes SQL de contrôle | `queries.sql` |
+| Réponse rédigée (justification DW) | Ce README, Partie F |
+
+---
+
+# TP Data Lake
+
+## Partie A — Stockage objet avec MinIO
+
+MinIO est ajouté au `docker-compose.yml` et expose :
+
+- **API S3** : `http://localhost:9000`
+- **Console Web** : `http://localhost:9001` (login: `minioadmin` / `minioadmin`)
+
+### Organisation des buckets
+
+| Bucket           | Contenu                                      |
+|------------------|----------------------------------------------|
+| `raw-pokemon`    | Réponses JSON brutes de la PokeAPI           |
+| `pokemon-images` | Images (sprites, artworks) des Pokémon       |
+| `reports`        | Rapports CSV/JSON générés                    |
+
+Les 3 buckets sont créés automatiquement au démarrage via le service `minio-init`.
+
+---
+
+## Partie B — Base enrichie
+
+### Table `pokemon_files`
+
+| Colonne     | Type         | Description                          |
+|-------------|--------------|--------------------------------------|
+| file_id     | SERIAL PK    | Identifiant unique du fichier        |
+| pokemon_id  | INT          | ID du Pokémon associé                |
+| bucket_name | VARCHAR(255) | Nom du bucket MinIO                  |
+| object_key  | VARCHAR(512) | Chemin complet de l'objet            |
+| file_name   | VARCHAR(255) | Nom du fichier                       |
+| file_type   | VARCHAR(100) | Type de fichier (json, png, csv)     |
+| file_size   | INT          | Taille en octets                     |
+| mime_type   | VARCHAR(100) | Type MIME                            |
+| created_at  | TIMESTAMP    | Date de création                     |
+
+### Table `file_ingestion_log`
+
+| Colonne      | Type         | Description                          |
+|--------------|--------------|--------------------------------------|
+| log_id       | SERIAL PK    | Identifiant unique du log            |
+| file_name    | VARCHAR(255) | Nom du fichier                       |
+| bucket_name  | VARCHAR(255) | Nom du bucket                        |
+| object_key   | VARCHAR(512) | Chemin complet de l'objet            |
+| source       | VARCHAR(255) | Source des données                   |
+| status       | VARCHAR(50)  | Statut (success / error)             |
+| file_size    | INT          | Taille en octets                     |
+| mime_type    | VARCHAR(100) | Type MIME                            |
+| processed_at | TIMESTAMP    | Date de traitement                   |
+
+---
+
+## Partie C — Workflow n8n Data Lake
+
+Le workflow `n8n-workflow-datalake.json` est composé de **7 nœuds** :
+
+1. **Start** — Déclenchement manuel.
+2. **Get Pokemon List** (Postgres) — Récupère les 10 premiers Pokémon depuis la base.
+3. **Fetch Raw JSON** (HTTP Request) — Appelle la PokeAPI pour chaque Pokémon.
+4. **Prepare Files** (Code) — Prépare le nom de fichier, la clé objet, et le contenu JSON.
+5. **Upload to MinIO** (HTTP Request) — Envoie le fichier JSON brut dans le bucket `raw-pokemon` via l'API S3 de MinIO.
+6. **Build SQL** (Code) — Génère les requêtes INSERT pour `pokemon_files` et `file_ingestion_log`.
+7. **Insert Metadata** (Postgres) — Exécute les INSERT en base.
+
+### Import
+
+1. Créer un nouveau workflow dans n8n
+2. Importer `n8n-workflow-datalake.json`
+3. Associer le credential PostgreSQL aux nœuds Postgres
+4. Configurer le credential S3/HTTP pour MinIO si nécessaire
+5. Exécuter le workflow
+
+---
+
+## Partie D — Justification Data Lake / Lakehouse
+
+L'ajout de MinIO transforme l'architecture en une logique **Data Lake / Lakehouse**. MinIO apporte une couche de stockage objet compatible S3 qui permet de conserver les données brutes (JSON complets de la PokeAPI) dans leur format d'origine, sans transformation ni perte d'information. Contrairement à la base relationnelle qui ne stocke que les champs sélectionnés et transformés, le Data Lake conserve l'intégralité de la réponse API, ce qui permet de retraiter les données ultérieurement si de nouveaux besoins apparaissent. La base PostgreSQL ne contient pas les fichiers eux-mêmes mais uniquement leurs métadonnées (emplacement, taille, type, date), ce qui maintient la base légère et performante tout en gardant la traçabilité complète. Cette séparation entre stockage brut (MinIO) et stockage structuré (PostgreSQL) est le principe fondamental d'un Lakehouse : combiner la flexibilité d'un Data Lake avec la rigueur d'un Data Warehouse. L'architecture est donc plus riche qu'une simple base relationnelle car elle gère à la fois des données structurées, semi-structurées et des fichiers binaires dans un système cohérent et interrogeable.
+
+---
+
+## Livrables — Data Lake
+
+| Livrable | Emplacement |
+|---|---|
+| Ajout de MinIO dans Docker | `docker-compose.yml` (services `minio` + `minio-init`) |
+| Création des buckets | Automatique via `minio-init` (raw-pokemon, pokemon-images, reports) |
+| Structure SQL ajoutée | `init.sql` (tables `pokemon_files` et `file_ingestion_log`) |
+| Description du workflow n8n | Ce README, Partie C Data Lake + fichier `n8n-workflow-datalake.json` |
+| Exemple d'objet stocké dans MinIO | Fichiers JSON bruts dans `raw-pokemon/raw/` (ex: `1_bulbasaur.json`) |
+| Métadonnées en base | Tables `pokemon_files` et `file_ingestion_log` (capture : `datalake_preuve_metadonnees_base`) |
+| Réponse rédigée (justification Data Lake) | Ce README, Partie D |

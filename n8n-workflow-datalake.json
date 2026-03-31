@@ -1,0 +1,120 @@
+{
+  "name": "DataLake - Store Raw Pokemon in MinIO",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT pokemon_id, pokemon_name FROM pokemon ORDER BY pokemon_id LIMIT 10;"
+      },
+      "id": "get_pokemon_list",
+      "name": "Get Pokemon List",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [220, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Pokemon DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://pokeapi.co/api/v2/pokemon/{{ $json.pokemon_id }}",
+        "options": {}
+      },
+      "id": "fetch_raw",
+      "name": "Fetch Raw JSON",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst now = new Date().toISOString();\nconst results = [];\n\nfor (const item of items) {\n  const p = item.json;\n  const fileName = p.id + '_' + p.name + '.json';\n  const objectKey = 'raw/' + fileName;\n  const content = JSON.stringify(p);\n\n  const buffer = Buffer.from(content, 'utf-8');\n\n  results.push({\n    json: {\n      pokemon_id: p.id,\n      pokemon_name: p.name,\n      file_name: fileName,\n      object_key: objectKey,\n      bucket_name: 'raw-pokemon',\n      file_type: 'json',\n      mime_type: 'application/json',\n      file_size: buffer.length,\n      created_at: now\n    },\n    binary: {\n      data: {\n        data: buffer.toString('base64'),\n        mimeType: 'application/json',\n        fileName: fileName\n      }\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "prepare_files",
+      "name": "Prepare Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "raw-pokemon",
+        "fileName": "={{ $json.object_key }}",
+        "binaryPropertyName": "data"
+      },
+      "id": "upload_minio",
+      "name": "Upload to MinIO",
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [880, 300],
+      "credentials": {
+        "s3": {
+          "id": "2",
+          "name": "MinIO S3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $('Prepare Files').all();\nconst results = [];\n\nfor (const item of prepared) {\n  const p = item.json;\n\n  const insertFile = `INSERT INTO pokemon_files (pokemon_id, bucket_name, object_key, file_name, file_type, file_size, mime_type, created_at) VALUES (${p.pokemon_id}, '${p.bucket_name}', '${p.object_key}', '${p.file_name}', '${p.file_type}', ${p.file_size}, '${p.mime_type}', '${p.created_at}');`;\n\n  const insertLog = `INSERT INTO file_ingestion_log (file_name, bucket_name, object_key, source, status, file_size, mime_type, processed_at) VALUES ('${p.file_name}', '${p.bucket_name}', '${p.object_key}', 'pokeapi', 'success', ${p.file_size}, '${p.mime_type}', '${p.created_at}');`;\n\n  results.push({ json: { query: insertFile } });\n  results.push({ json: { query: insertLog } });\n}\n\nreturn results;"
+      },
+      "id": "build_sql",
+      "name": "Build SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}"
+      },
+      "id": "insert_metadata",
+      "name": "Insert Metadata",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1320, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Pokemon DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [[{ "node": "Get Pokemon List", "type": "main", "index": 0 }]]
+    },
+    "Get Pokemon List": {
+      "main": [[{ "node": "Fetch Raw JSON", "type": "main", "index": 0 }]]
+    },
+    "Fetch Raw JSON": {
+      "main": [[{ "node": "Prepare Files", "type": "main", "index": 0 }]]
+    },
+    "Prepare Files": {
+      "main": [[{ "node": "Upload to MinIO", "type": "main", "index": 0 }]]
+    },
+    "Upload to MinIO": {
+      "main": [[{ "node": "Build SQL", "type": "main", "index": 0 }]]
+    },
+    "Build SQL": {
+      "main": [[{ "node": "Insert Metadata", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

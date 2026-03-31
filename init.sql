@@ -1,5 +1,5 @@
 -- ============================================
--- Partie B — Préparation de la base
+-- Partie B — Préparation de la base (TP2)
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS ingestion_runs (
@@ -25,4 +25,32 @@ CREATE TABLE IF NOT EXISTS pokemon (
     ingested_at             TIMESTAMP NOT NULL DEFAULT NOW(),
     run_id                  INT REFERENCES ingestion_runs(run_id),
     PRIMARY KEY (pokemon_id, run_id)
+);
+
+-- ============================================
+-- Partie B — Base enrichie (Data Lake)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS pokemon_files (
+    file_id     SERIAL PRIMARY KEY,
+    pokemon_id  INT NOT NULL,
+    bucket_name VARCHAR(255) NOT NULL,
+    object_key  VARCHAR(512) NOT NULL,
+    file_name   VARCHAR(255) NOT NULL,
+    file_type   VARCHAR(100) NOT NULL,
+    file_size   INT,
+    mime_type   VARCHAR(100),
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS file_ingestion_log (
+    log_id          SERIAL PRIMARY KEY,
+    file_name       VARCHAR(255) NOT NULL,
+    bucket_name     VARCHAR(255) NOT NULL,
+    object_key      VARCHAR(512) NOT NULL,
+    source          VARCHAR(255),
+    status          VARCHAR(50) NOT NULL DEFAULT 'success',
+    file_size       INT,
+    mime_type       VARCHAR(100),
+    processed_at    TIMESTAMP NOT NULL DEFAULT NOW()
 );
